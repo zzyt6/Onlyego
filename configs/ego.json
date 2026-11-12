@@ -1,0 +1,19 @@
+{
+  "image": {
+    "model": "gpt-image-2.6",
+    "api_key_env": "AGILE_IMAGE_API_KEY",
+    "base_url": "https://api.cheapcodex.online/v1"
+  },
+  "agent": {
+    "executable": "codex",
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "high",
+    "timeout_seconds": 600,
+    "review_context": "images_only"
+  },
+  "texture": {
+    "size": 2048,
+    "max_image_calls": 8,
+    "timeout_seconds": 3600
+  }
+}

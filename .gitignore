@@ -1,0 +1,13 @@
+secrets.env
+runs/
+model/
+_*.log
+__pycache__/
+*.egg-info/
+.pytest_cache/
+data/
+
+# compiled extensions built in place by tools/wsl/setup_hoi_env.sh (FoundationPose mycpp / mycuda)
+src/HOI/foundation_pose/FoundationPose/mycpp/build/
+src/HOI/foundation_pose/FoundationPose/bundlesdf/mycuda/build/
+src/HOI/**/*.so

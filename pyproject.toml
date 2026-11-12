@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zyego"
+version = "0.1.0"
+description = "Video -> object four-view (four_stage_view) and per-frame metric depth (depth_estimation), Windows"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26,<3", "scipy>=1.11,<2", "Pillow>=10.4", "pydantic>=2.8,<3",
+  "filelock>=3.15,<4", "httpx>=0.28,<1", "opencv-python>=4.8,<4.12",
+  "imageio-ffmpeg>=0.5",  # ffmpeg with zscale + tonemap: HDR (iPhone HLG) video -> SDR frames
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+# depth_estimation: install CUDA PyTorch first (see README), then  pip install -e .[depth]
+depth = [
+  "torch>=2.5",
+  "moge @ git+https://github.com/microsoft/MoGe.git@925b8ed835a7a9cdb7578ba15c658a0afc969030",
+  "anycalib @ git+https://github.com/javrtg/AnyCalib.git@027a8497d893f4b2596f23d6324c05e4b81064ed",
+  "geocalib @ git+https://github.com/cvg/GeoCalib.git@1dedb29f94fc11b896c5f572005978aeebccd67f",
+  "gdown>=5",
+]
+# hand_model: MANO via smplx (torch installed as above)
+hand = ["torch>=2.5", "smplx==0.1.28"]
+# depth_estimation view: interactive 3D point-cloud viewer in the browser
+viz = ["viser>=1.0,<2"]
+
+[project.scripts]
+four_stage_view = "four_stage_view.cli:main"
+depth_estimation = "depth_estimation.cli:main"
+camera_pose = "camera_pose.cli:main"
+video_depth = "video_depth.cli:main"
+hand_model = "hand_model.cli:main"
+HOI = "HOI.cli:main"
+object_model = "object_model.cli:main"
+object_pose = "object_pose.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

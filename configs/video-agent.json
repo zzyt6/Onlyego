@@ -1,0 +1,9 @@
+{
+  "base_url": "https://api.cheapcodex.online/v1",
+  "api_key_env": "AGILE_OPENAI_API_KEY",
+  "model": "gpt-6.1-sol",
+  "reasoning_effort": "high",
+  "timeout_seconds": 300,
+  "max_rounds": 16,
+  "prompt_file": "prompts/video-agent.txt"
+}

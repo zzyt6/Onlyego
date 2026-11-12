@@ -1,0 +1,8 @@
+GroundingDINO 856dde20aee659246248e20734ef9ba5214f5e44 https://github.com/IDEA-Research/GroundingDINO.git
+HaWoR 66c7d4108d58a716deccd192cb7645170cdc7bd7 https://github.com/ThunderVVV/HaWoR.git
+WiLoR-mini ebec42f94c389070cdd7dda6fd1bf0b4a659c960 https://github.com/warmshao/WiLoR-mini.git
+hamer 3a01849f4148352e9260b69bf28b65d1671a4905 https://github.com/geopavlakos/hamer.git
+nvdiffrast 253ac4fcea7de5f396371124af597e6cc957bfae https://github.com/NVlabs/nvdiffrast.git
+pytorch3d e4ad6e5687a360ccdc6ebd91348e8dbbac97bf31 https://github.com/facebookresearch/pytorch3d.git
+sam-3d-objects f91db411c50efee93d8db7aeb323885650f6f722 https://github.com/facebookresearch/sam-3d-objects.git
+sam2 2b90b9f5ceec907a1c18123530e92e794ad901a4 https://github.com/facebookresearch/sam2.git
