@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 import trimesh
 
-from camera_pose.poses import matrix_to_quat_wxyz
+from video_depth.poses import matrix_to_quat_wxyz
 
 from .model import load_mesh, obb_extents_m
 from .segment import OBJECT_ID, load_mask

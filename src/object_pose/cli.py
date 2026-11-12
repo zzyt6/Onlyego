@@ -39,7 +39,7 @@ def out_dir(name: str):
 
 
 def track(name: str, log=print, videos: bool = True) -> dict:
-    from camera_pose.poses import load_trajectory
+    from video_depth.poses import load_trajectory
     from depth_estimation.datatypes import CameraIntrinsics
     from object_model import model, wsl
 

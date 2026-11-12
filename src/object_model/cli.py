@@ -37,7 +37,7 @@ def run(name: str, prompt: str, detect_frame: int, window: int, seed: int, log=p
         min_iou: float | None = None, max_point_mm: float | None = None) -> dict:
     import cv2
 
-    from camera_pose.poses import load_trajectory
+    from video_depth.poses import load_trajectory
     from depth_estimation.datatypes import CameraIntrinsics, frame_indices
 
     from . import model, pointmap, reference, segment
@@ -126,8 +126,6 @@ def main(argv=None):
                    help="quality check: silhouette IoU after the fit must reach this (default 0.95)")
     r.add_argument("--max-point-mm", type=float, default=None,
                    help="quality check: median fused-point to mesh-surface distance at most this (default 3 mm)")
-    o = sub.add_parser("overlay", help="videos of the mesh on the original frames: SAM3D size vs fitted size")
-    o.add_argument("name")
     v = sub.add_parser("view", help="mesh + point clouds in the browser (viser)")
     v.add_argument("name")
     v.add_argument("--frames", help="frame range a-b to load (default: 0 to the reference frame)")
@@ -146,10 +144,6 @@ def main(argv=None):
                      min_iou=a.min_iou, max_point_mm=a.max_point_mm)
         if not record["quality"]["passed"]:
             raise SystemExit(2)  # outputs are written; the non-zero exit tells scripts the fit failed the check
-    elif a.command == "overlay":
-        from .overlay import render_videos
-        for path in render_videos(paths(a.name)):
-            print(path)
     else:
         from .viewer import serve
         serve(paths(a.name), a.frames, a.host, a.port)

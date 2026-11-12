@@ -15,7 +15,7 @@ import time
 
 import numpy as np
 
-from camera_pose.poses import matrix_to_quat_wxyz
+from video_depth.poses import matrix_to_quat_wxyz
 from object_model.cli import paths as om_paths
 from object_model.model import load_mesh
 from object_model.viewer import Data

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from camera_pose import wsl
+from video_depth import wsl
 from video_depth import cli
 from video_depth.megasam import align_mono_to_metric, tracking_size
 
@@ -28,8 +28,6 @@ def test_wsl_command_uses_megasam_env_and_paths():
     script = cmd[-1]
     assert "conda activate zyego-megasam" in script
     assert '"$HOME/zyego-external/mega-sam/base/droid_slam"' in script and "DROID-SLAM" not in script
-    # camera_pose keeps the plain DROID-SLAM env
-    assert "conda activate zyego-cuda" in wsl.command("camera_pose.slam", [])[-1]
 
 
 def _rot(axis, deg):
@@ -87,17 +85,3 @@ def test_fullres_keeps_moge_detail_and_takes_megasam_scale():
     # the step stays sharp: one column apart, the full-resolution depth jumps by ~0.3*0.9
     row = full[H // 2]
     assert row[W // 2 + 1] - row[W // 2] == pytest.approx(0.27, abs=0.03)
-
-
-def test_compare_stability_separates_scale_flicker_from_a_steady_sequence():
-    from video_depth.compare import stability
-
-    rng = np.random.default_rng(0)
-    base = 0.7 + 0.1 * rng.random((8, 10))
-    steady = np.stack([base] * 20)
-    flicker = np.stack([base * s for s in 1 + 0.05 * np.sin(np.arange(20))])
-    mask = np.ones((8, 10), bool)
-    a, b = stability(steady, mask), stability(flicker, mask)
-    assert a["scale_jitter_pct"] == 0 and a["pixel_wobble_mm"] == 0 and a["frame_to_frame_pct"] == 0
-    assert 2 < b["scale_jitter_pct"] < 5 and b["pixel_wobble_pct"] > 2 and b["frame_to_frame_pct"] > 1
-    assert len(b["per_frame_median_m"]) == 20

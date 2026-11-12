@@ -1,26 +1,11 @@
-"""Ways to look at the result: per-frame statistics, a side-by-side preview video, a point cloud.
+"""Ways to look at the result: per-frame statistics and a side-by-side preview video."""
 
-Not part of V2D's depth module (they inspect through their Three.js scene export); added here so
-the jitter that intrinsics.py / align.py correct for can be seen directly.
-"""
-
-import json
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 from .datatypes import CameraIntrinsics, frame_indices, frame_name, load_depth
-
-
-def image_dir(run_dir: Path) -> Path:
-    """Frames that depth was computed on (frames_undistorted/ when --undistort was used)."""
-    record = run_dir / "run.json"
-    if record.exists():
-        name = json.loads(record.read_text(encoding="utf-8")).get("image_dir")
-        if name:
-            return run_dir / name
-    return run_dir / "frames"
 
 
 def depth_stats(depth_dir: Path, intrinsics_dir: Path) -> list[dict]:
@@ -84,44 +69,3 @@ def preview_video(frames_dir: Path, depth_dir: Path, output: Path, fps: float, m
         if writer is not None:
             writer.release()
     return output
-
-
-def unproject(depth: np.ndarray, k: CameraIntrinsics, stride: int = 1):
-    """Pixel (u, v) with depth z -> camera point ((u - cx) z / fx, (v - cy) z / fy, z), OpenCV axes."""
-    h, w = depth.shape
-    v, u = np.mgrid[0:h:stride, 0:w:stride]
-    z = depth[::stride, ::stride]
-    keep = np.isfinite(z) & (z > 0)
-    u, v, z = u[keep], v[keep], z[keep]
-    points = np.stack([(u - k.cx) * z / k.fx, (v - k.cy) * z / k.fy, z], axis=1).astype(np.float32)
-    return points, (v, u)
-
-
-def write_ply(path: Path, points: np.ndarray, colors: np.ndarray):
-    vertex = np.empty(len(points), dtype=[("x", "<f4"), ("y", "<f4"), ("z", "<f4"),
-                                          ("red", "u1"), ("green", "u1"), ("blue", "u1")])
-    vertex["x"], vertex["y"], vertex["z"] = points.T
-    vertex["red"], vertex["green"], vertex["blue"] = colors.T
-    header = ("ply\nformat binary_little_endian 1.0\n"
-              f"element vertex {len(points)}\n"
-              "property float x\nproperty float y\nproperty float z\n"
-              "property uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "wb") as stream:
-        stream.write(header.encode("ascii"))
-        stream.write(vertex.tobytes())
-
-
-def frame_point_cloud(run_dir: Path, frame: int, output: Path, *, depth_subdir: str = "depth",
-                      intrinsics: str = "per-frame", stride: int = 2) -> int:
-    """Back-project one frame. intrinsics='per-frame' uses the camera MoGe solved for that frame
-    (geometrically consistent with its depth); 'stable' uses intrinsics_stable.json."""
-    depth = load_depth(run_dir / depth_subdir / frame_name(frame, ".png"))
-    k_path = (run_dir / "intrinsics_stable.json" if intrinsics == "stable"
-              else run_dir / "intrinsics" / frame_name(frame, ".json"))
-    k = CameraIntrinsics.load(k_path)
-    points, (v, u) = unproject(depth, k, stride)
-    rgb = cv2.imread(str(image_dir(run_dir) / frame_name(frame, ".png")))
-    colors = (rgb[v, u, ::-1] if rgb is not None else np.full((len(points), 3), 200)).astype(np.uint8)
-    write_ply(output, points, colors)
-    return len(points)

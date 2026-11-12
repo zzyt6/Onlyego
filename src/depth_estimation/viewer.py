@@ -2,30 +2,21 @@
 
     depth_estimation view demo01                         # then open http://localhost:8080
     depth_estimation view runs\\video_depth\\demo01        # same sources, MegaSaM depth selected first
-    depth_estimation view demo01 --poses demo01          # points in world coordinates from a camera_pose run
 
 Depth sources (dropdown "深度来源"): every result of the same video is found from whichever one is opened -- the
-depth_estimation run, the video_depth run made from it (its run.json names the depth run) and the HOI runs that
-used it (their zyego_sources.json names it):
-  MoGe-2 逐帧（V2D 的深度）                  depth_estimation/depth          what V2D uses: MoGe-2 per frame
-  V2D 修正后（MoGe-2 逐帧 + gsplat 精修）    HOI run with --depth moge: depth_refined_simple (rendered refined scene)
-  MoGe-2 + 逐帧尺度对齐                      depth_estimation/depth_aligned  (run --scale-align / align)
+depth_estimation run and the video_depth run made from it (its run.json names the depth run):
+  MoGe-2 逐帧                                depth_estimation/depth          MoGe-2 per frame
   MoGe-2 + MegaSaM（全分辨率）               video_depth/depth               consistent over the video
   MegaSaM 原始输出（低分辨率）                video_depth/depth_megasam
-  MegaSaM + gsplat 精修                      HOI run with MegaSaM depth: depth_refined_simple
 
 What it shows:
   - the point cloud of one frame: every `stride`-th pixel back-projected with that frame's intrinsics (pixel
     centres, as MoGe uses), coloured by the image, by depth, or per frame;
   - "同时显示": a second source drawn in one colour on top, to see where the two disagree;
   - "多帧叠加": several frames at once, each in its own colour. With a still camera they should coincide;
-    per-frame scale jitter shows up as layers pushed apart along the viewing rays;
-  - the stability table of `video_depth compare` (compare.json), and this frame's static-background depth
-    per source;
-  - with --poses: points and frustum placed by the camera_pose trajectory (camera->world), plus the path.
+    per-frame scale jitter shows up as layers pushed apart along the viewing rays.
 
-Coordinates are OpenCV camera axes (x right, y down, z forward); the viewer's "up" is -y, or +z when the
-gravity-aligned poses (poses_gravity/) are used.
+Coordinates are OpenCV camera axes (x right, y down, z forward); the viewer's "up" is -y.
 """
 
 import json
@@ -47,28 +38,14 @@ SECOND_COLOUR = np.array((255, 0, 255), dtype=np.uint8)  # "同时显示" source
 
 # (run kind, folder) -> label, in display order
 SOURCE_LABELS = {
-    ("depth_estimation", "depth"): "MoGe-2 逐帧（V2D 的深度）",
-    ("hoi_moge", "depth_refined_simple"): "V2D 修正后（MoGe-2 逐帧 + gsplat 精修）",
-    ("depth_estimation", "depth_aligned"): "MoGe-2 + 逐帧尺度对齐",
+    ("depth_estimation", "depth"): "MoGe-2 逐帧",
     ("video_depth", "depth"): "MoGe-2 + MegaSaM（全分辨率）",
     ("video_depth", "depth_megasam"): "MegaSaM 原始输出（低分辨率）",
-    ("hoi_megasam", "depth_refined_simple"): "MegaSaM + gsplat 精修",
 }
 SHORT_LABELS = {  # for the per-frame line
-    ("depth_estimation", "depth"): "V2D",
-    ("hoi_moge", "depth_refined_simple"): "V2D 精修",
-    ("depth_estimation", "depth_aligned"): "尺度对齐",
+    ("depth_estimation", "depth"): "MoGe-2",
     ("video_depth", "depth"): "MegaSaM",
     ("video_depth", "depth_megasam"): "MegaSaM 低分辨率",
-    ("hoi_megasam", "depth_refined_simple"): "MegaSaM 精修",
-}
-ENGLISH_LABELS = {  # for video_depth compare (OpenCV text)
-    ("depth_estimation", "depth"): "MoGe-2 per frame (V2D)",
-    ("hoi_moge", "depth_refined_simple"): "V2D + gsplat refine",
-    ("depth_estimation", "depth_aligned"): "MoGe-2 + scale align",
-    ("video_depth", "depth"): "MoGe-2 + MegaSaM",
-    ("video_depth", "depth_megasam"): "MegaSaM low-res",
-    ("hoi_megasam", "depth_refined_simple"): "MegaSaM + gsplat refine",
 }
 NOT_SHOWN = "不显示"
 
@@ -87,17 +64,9 @@ def _record(run: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
-def _hoi_sources(run: Path) -> dict:
-    path = run / "zyego_sources.json"
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-
-
 def _kind(run: Path) -> str:
     if (run / "megasam.json").exists():
         return "video_depth"
-    hoi = _hoi_sources(run)
-    if hoi:
-        return "hoi_megasam" if str(hoi.get("depth", "")).startswith("video_depth") else "hoi_moge"
     return "depth_estimation"
 
 
@@ -105,25 +74,20 @@ def _depth_run_of(run: Path) -> Path | None:
     kind = _kind(run)
     if kind == "video_depth":
         value = _record(run).get("depth_run")
-    elif kind.startswith("hoi"):
-        value = _hoi_sources(run).get("depth_estimation")
     else:
         return run
     return Path(value) if value and Path(value).is_dir() else None
 
 
 def linked_runs(run: Path) -> list[Path]:
-    """`run` plus every other result of the same video: its depth_estimation run, the video_depth run made from that
-    (runs/video_depth/<name>) and the HOI runs that used it (runs/HOI/*/zyego_sources.json)."""
+    """`run` plus every other result of the same video: its depth_estimation run and the video_depth run made from that
+    (runs/video_depth/<name>)."""
     run = Path(run)
     runs = [run]
     depth_run = _depth_run_of(run)
     if depth_run is None:
         return runs
     candidates = [depth_run, PROJECT / "runs" / "video_depth" / depth_run.name]
-    hoi_root = PROJECT / "runs" / "HOI"
-    if hoi_root.is_dir():
-        candidates += sorted(p for p in hoi_root.iterdir() if (p / "zyego_sources.json").exists())
     for c in candidates:
         if c.is_dir() and c.resolve() not in {r.resolve() for r in runs}:
             other = _depth_run_of(c)
@@ -144,9 +108,9 @@ def find_sources(run: Path) -> dict:
 
 
 class RunData:
-    """Lazy access to a run's depth sources (and optionally camera poses), with small caches."""
+    """Lazy access to a run's depth sources, with small caches."""
 
-    def __init__(self, run: Path, poses_dir: Path | None = None):
+    def __init__(self, run: Path):
         self.run = Path(run)
         record = _record(self.run)
         self.images = self.run / record.get("image_dir", "frames")  # image_dir may be absolute (video_depth)
@@ -157,38 +121,10 @@ class RunData:
             SOURCE_LABELS[key]: DepthSource(SOURCE_LABELS[key], SHORT_LABELS[key], key[0], r, folder)
             for key, (r, folder) in find_sources(self.run).items()}
         main_kind = _kind(self.run)
-        preferred = {"video_depth": [("video_depth", "depth")],
-                     "hoi_moge": [("hoi_moge", "depth_refined_simple")],
-                     "hoi_megasam": [("hoi_megasam", "depth_refined_simple")]}.get(main_kind, [])
-        preferred += [("depth_estimation", "depth_aligned"), ("depth_estimation", "depth")]
+        preferred = {"video_depth": [("video_depth", "depth")]}.get(main_kind, [])
+        preferred += [("depth_estimation", "depth")]
         self.default_source = next(SOURCE_LABELS[p] for p in preferred if SOURCE_LABELS[p] in self.sources)
         self.fps = float(record.get("video", {}).get("fps", 30.0)) / int(record.get("settings", {}).get("stride", 1))
-        self.stability = self._load_stability()
-        self.poses: dict[int, np.ndarray] = {}
-        if poses_dir is not None:
-            from camera_pose.poses import load_trajectory
-            idx, mats = load_trajectory(poses_dir)
-            self.poses = dict(zip(idx, mats))
-            if not self.poses:
-                raise FileNotFoundError(f"No camera poses in {poses_dir}")
-
-    def _load_stability(self) -> dict | None:
-        """compare.json of `video_depth compare`, keyed by our source labels (matched on the depth folders)."""
-        for r in linked_runs(self.run):
-            path = r / "compare.json"
-            if not path.exists():
-                continue
-            summary = json.loads(path.read_text(encoding="utf-8"))
-            by_folder = {s.folder.resolve(): label for label, s in self.sources.items()}
-            rows = {}
-            for name, folder in summary.get("sources", {}).items():
-                label = by_folder.get(Path(folder).resolve())
-                if label and name in summary.get("stability", {}):
-                    rows[label] = summary["stability"][name]
-            if rows:
-                return {"rows": rows, "indices": summary.get("indices"), "path": path,
-                        "static_fraction": summary.get("static_background_fraction")}
-        return None
 
     def intrinsics(self, i: int, source: str) -> CameraIntrinsics:
         s = self.sources[source]
@@ -222,20 +158,6 @@ class RunData:
                                   interpolation=cv2.INTER_NEAREST).astype(bool)
         return backproject(depth, rgb, k, stride, mask=mask)
 
-    def background_depth(self, i: int) -> dict[str, float]:
-        """This frame's static-background median depth per source, from compare.json."""
-        if not self.stability or not self.stability.get("indices"):
-            return {}
-        try:
-            k = self.stability["indices"].index(i)
-        except ValueError:
-            return {}
-        return {label: row["per_frame_median_m"][k] for label, row in self.stability["rows"].items()}
-
-    def pose(self, i: int) -> np.ndarray | None:
-        return self.poses.get(i) if self.poses else None
-
-
 def backproject(depth: np.ndarray, rgb: np.ndarray, k: CameraIntrinsics, stride: int = 1, mask=None):
     """Pixel (u, v) with depth z -> ((u+0.5-cx) z/fx, (v+0.5-cy) z/fy, z); MoGe's cx = W/2 is the image centre
     in continuous coordinates, i.e. pixel centres sit at +0.5."""
@@ -256,38 +178,12 @@ def depth_colours(z: np.ndarray, near: float, far: float) -> np.ndarray:
     return cv2.applyColorMap((t * 255).astype(np.uint8)[:, None], cv2.COLORMAP_TURBO)[:, 0, ::-1].copy()
 
 
-def rotation_to_wxyz(R: np.ndarray) -> np.ndarray:
-    from camera_pose.poses import matrix_to_quat_wxyz
-    return np.array(matrix_to_quat_wxyz(R))
-
-
-def stability_markdown(data: RunData) -> str:
-    if not data.stability:
-        return ("**深度稳定性**：还没有统计。运行 `video_depth compare <名字>` 后重开查看器，"
-                "这里会显示各深度来源在静止背景上的抖动。")
-    lines = ["**深度稳定性（静止背景，越小越稳）**", "",
-             "| 深度来源 | 整帧尺度抖动 | 像素晃动 | 晃动幅度 | 相邻帧跳变 | 统计覆盖 |",
-             "|---|---|---|---|---|---|"]
-    for label, r in data.stability["rows"].items():
-        lines.append(f"| {label} | {r['scale_jitter_pct']:.2f}% | {r['pixel_wobble_pct']:.2f}% | "
-                     f"{r['pixel_wobble_mm']:.1f} mm | {r['frame_to_frame_pct']:.3f}% | {r.get('coverage', 1) * 100:.0f}% |")
-    frac = data.stability.get("static_fraction")
-    lines += ["", f"静止背景 = 整段视频颜色基本不变的像素（占画面 {frac * 100:.1f}%，只适用于固定机位）。"
-              if frac is not None else "",
-              "整帧尺度抖动：背景深度中位数随帧变化的标准差 / 均值；像素晃动：每个像素深度随时间的标准差 / 均值"
-              "（取中位数）；相邻帧跳变：相邻两帧深度的相对变化；统计覆盖：静止背景里这种深度有效（≥80% 帧）的比例，"
-              "gsplat 渲染深度有空洞时低于 100%。"]
-    return "\n".join(lines)
-
-
-def serve(run: Path, poses_dir: Path | None = None, host: str = "127.0.0.1", port: int = 8080,
-          block: bool = True):
+def serve(run: Path, host: str = "127.0.0.1", port: int = 8080, block: bool = True):
     import viser
 
-    data = RunData(run, poses_dir)
-    gravity_world = poses_dir is not None and Path(poses_dir).name == "poses_gravity"
+    data = RunData(run)
     server = viser.ViserServer(host=host, port=port, label=f"深度：{Path(run).name}")
-    server.scene.set_up_direction("+z" if gravity_world else "-y")
+    server.scene.set_up_direction("-y")
     n = len(data.indices)
     lock = threading.Lock()
     handles: list = []
@@ -307,10 +203,9 @@ def serve(run: Path, poses_dir: Path | None = None, host: str = "127.0.0.1", por
 
     with server.gui.add_folder("深度来源"):
         g_source = server.gui.add_dropdown("深度来源", labels, initial_value=data.default_source,
-                                           hint="V2D 的深度 = MoGe-2 每帧单独推理；MegaSaM = 以 MoGe-2 为先验、整段视频联合优化的一致深度")
+                                           hint="MoGe-2 逐帧 = 每帧单独推理；MegaSaM = 以 MoGe-2 为先验、整段视频联合优化的一致深度")
         g_second = server.gui.add_dropdown("同时显示", [NOT_SHOWN, *labels], initial_value=NOT_SHOWN,
                                            hint="再画一种深度（洋红色），和上面选的直接比较哪里不一致")
-    g_stats = server.gui.add_markdown(stability_markdown(data))
     with server.gui.add_folder("帧"):
         g_frame = server.gui.add_slider("帧位置", 0, n - 1, 1, 0, hint="在运行结果里的位置；下面的信息显示视频帧号")
         g_play = server.gui.add_checkbox("播放", False)
@@ -332,22 +227,7 @@ def serve(run: Path, poses_dir: Path | None = None, host: str = "127.0.0.1", por
         g_gap = server.gui.add_slider("帧间隔", 1, max(1, n // 2), 1, max(1, min(30, n // 8)))
     with server.gui.add_folder("相机"):
         g_frustum = server.gui.add_checkbox("视锥和图像", True)
-        g_traj = server.gui.add_checkbox("轨迹", bool(data.poses), visible=bool(data.poses))
     g_info = server.gui.add_markdown("")
-
-    if data.poses:
-        idx = [i for i in data.indices if i in data.poses]
-        centres = np.array([data.poses[i][:3, 3] for i in idx], dtype=np.float32)
-        if len(centres) > 1:
-            segs = np.stack([centres[:-1], centres[1:]], axis=1)
-            t = np.linspace(0, 1, len(segs))
-            cols = (np.stack([t, 0.3 + 0 * t, 1 - t], axis=1)[:, None, :].repeat(2, 1) * 255).astype(np.uint8)
-            traj = server.scene.add_line_segments("/trajectory", segs, cols, thickness=2.0, thickness_units="screen")
-            g_traj.on_update(lambda _: setattr(traj, "visible", g_traj.value))
-
-    def placement(i: int):
-        M = data.pose(i)
-        return (rotation_to_wxyz(M[:3, :3]), M[:3, 3]) if M is not None else ((1, 0, 0, 0), (0, 0, 0))
 
     def render(_=None):
         with lock:
@@ -366,24 +246,22 @@ def serve(run: Path, poses_dir: Path | None = None, host: str = "127.0.0.1", por
                     cols = depth_colours(pts[:, 2], near, far)
                 elif g_colour.value == "按帧":
                     cols = np.broadcast_to(FRAME_COLOURS[j % len(FRAME_COLOURS)], pts.shape).copy()
-                wxyz, position = placement(i)
                 handles.append(server.scene.add_point_cloud(
                     f"/cloud/{j}", pts, cols, point_size=g_size.value / 1000.0, point_shape="rounded",
-                    precision="float32", wxyz=wxyz, position=position))
+                    precision="float32"))
                 if g_second.value != NOT_SHOWN and g_second.value != g_source.value:
                     p2, _ = data.cloud(i, g_second.value, stride, g_mask.value)
                     p2 = p2[p2[:, 2] <= g_max.value]
                     handles.append(server.scene.add_point_cloud(
                         f"/second/{j}", p2, np.broadcast_to(SECOND_COLOUR, p2.shape).copy(),
-                        point_size=g_size.value / 1000.0, point_shape="rounded", precision="float32",
-                        wxyz=wxyz, position=position))
+                        point_size=g_size.value / 1000.0, point_shape="rounded", precision="float32"))
                 k = data.intrinsics(i, g_source.value)
                 if g_frustum.value:
                     img = data.image(i)
                     small = cv2.resize(img, (320, max(1, round(320 * img.shape[0] / img.shape[1]))))
                     handles.append(server.scene.add_camera_frustum(
                         f"/camera/{j}", fov=2 * np.arctan(k.height / (2 * k.fy)), aspect=k.width / k.height,
-                        scale=0.1, image=small, wxyz=wxyz, position=position,
+                        scale=0.1, image=small,
                         color=tuple(int(c) for c in FRAME_COLOURS[j % len(FRAME_COLOURS)]) if len(frames) > 1 else (20, 20, 20)))
                 z = pts[:, 2]
                 swatch = f"<span style='color:rgb{tuple(int(c) for c in FRAME_COLOURS[j % 8])}'>■</span> " \
@@ -393,11 +271,6 @@ def serve(run: Path, poses_dir: Path | None = None, host: str = "127.0.0.1", por
                 if j == 0:
                     lines.insert(0, f"fx {k.fx:.1f} fy {k.fy:.1f}，水平视场角 **{k.fov_x_degrees:.1f}°**，"
                                     f"{k.width}×{k.height}")
-                    bg = data.background_depth(i)
-                    if bg:
-                        parts = [f"{data.sources[label].short} **{v:.3f} m**" if label == g_source.value
-                                 else f"{data.sources[label].short} {v:.3f} m" for label, v in bg.items()]
-                        lines.insert(1, "本帧静止背景深度：" + "｜".join(parts))
             if g_second.value != NOT_SHOWN and g_second.value != g_source.value:
                 lines.append(f"<span style='color:rgb(255,0,255)'>■</span> 洋红色 = {g_second.value}")
             g_info.content = "  \n".join(lines)
@@ -413,7 +286,7 @@ def serve(run: Path, poses_dir: Path | None = None, host: str = "127.0.0.1", por
         return server, SimpleNamespace(frame=g_frame, play=g_play, source=g_source, second=g_second,
                                        colour=g_colour, stride=g_stride, size=g_size, max_depth=g_max,
                                        mask=g_mask, overlay=g_over, gap=g_gap, frustum=g_frustum, info=g_info,
-                                       stats=g_stats, handles=handles, render=render)
+                                       handles=handles, render=render)
     try:
         while True:
             if g_play.value:

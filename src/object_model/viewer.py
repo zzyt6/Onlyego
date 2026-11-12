@@ -16,7 +16,7 @@ import cv2
 import numpy as np
 import trimesh
 
-from camera_pose.poses import load_trajectory, matrix_to_quat_wxyz
+from video_depth.poses import load_trajectory, matrix_to_quat_wxyz
 from depth_estimation.datatypes import CameraIntrinsics, load_depth
 
 from .segment import LEFT_ID, OBJECT_ID, RIGHT_ID, load_mask

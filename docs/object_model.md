@@ -69,8 +69,6 @@ video_depth run demo01
 object_model run demo01 --prompt "a light blue box"     # → runs\object_model\demo01\
 object_model view demo01                                 # http://localhost:8080，默认显示第 0 帧到参考帧
 object_model view demo01 --frames 0-60                   # 也看手拿起物体之后
-object_model overlay demo01                              # 网格画在原视频上：overlay_sam3d.mp4（SAM3D 原始尺寸）、
-                                                         # overlay_fitted.mp4（拟合后），绿线 = SAM2 mask，静止帧显示 IoU
 ```
 
 查看器（Viser）：网格（SAM3D 贴图 / 单色半透明 / 线框）放在世界坐标里，每帧的点云（MegaSaM 深度）按相机位姿

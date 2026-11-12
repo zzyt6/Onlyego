@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
-# Environments + weights for src/HOI (V2D's hand + object modules), inside WSL distro V2D-Ubuntu.
-# Each V2D module ran in its own Docker image (pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel); here each group
-# of modules gets one conda env with the same PyTorch 2.5.1 + CUDA 12.4 wheels, built from that module's
-# Dockerfile (copied to src/HOI/<module>/docker/Dockerfile). Re-running is safe: finished steps are skipped.
+# Environments + weights for the model wrappers in src/HOI (WiLoR, Grounding DINO, SAM2, SAM3D, FoundationPose),
+# inside WSL distro V2D-Ubuntu. V2D ran each in its own Docker image (pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel);
+# here each group gets one conda env with the same PyTorch 2.5.1 + CUDA 12.4 wheels, as V2D's Dockerfiles did.
+# Re-running is safe: finished steps are skipped.
 #
 #   wsl -d V2D-Ubuntu -- bash /mnt/e/ZY_ego/tools/wsl/setup_hoi_env.sh <step>
-#   steps: system cuda124 wheels hands mediapipe hawor seg sam3d fp trtexec | weights_hands weights_mediapipe
-#          weights_hawor weights_seg weights_sam3d weights_fp | check | all
+#   steps: system cuda124 wheels hands seg sam3d fp trtexec | weights_hands weights_seg weights_sam3d weights_fp
+#          | check | all
 #
-#   env            modules (src/HOI/...)                         Dockerfile(s)
-#   hoi-hands      wilor hamer hand_alignment mesh               wilor, hamer, hand_alignment, mesh
-#   hoi-mediapipe  mediapipe (no torch; own opencv-contrib)      mediapipe
-#   hoi-hawor      hawor (builds HaWoR's own DROID-SLAM)          hawor
-#   hoi-seg        sam2 grounding_dino                            sam2, grounding_dino
-#   hoi-sam3d      sam3d                                          sam3d
-#   hoi-fp         foundation_pose mesh                           foundation_pose
-#   zyego-cuda     gsplat_refinement (already built by setup_cuda_env.sh: gsplat 1.4.0, manotorch, roma)
+#   env            modules (src/HOI/...)          used by
+#   hoi-hands      wilor                          object_model (hand boxes -> SAM2 hand prompts)
+#   hoi-seg        sam2 grounding_dino            object_model (object box, object/hand masks)
+#   hoi-sam3d      sam3d                          object_model (mesh)
+#   hoi-fp         foundation_pose mesh           object_pose (tracking)
 set -euo pipefail
 source "$HOME/miniforge3/etc/profile.d/conda.sh"
 
@@ -27,7 +24,6 @@ SRC=$PROJECT/src
 MODEL=$PROJECT/model
 VERSIONS=$PROJECT/tools/wsl/hoi_versions.txt
 CUDA124=/usr/local/cuda-12.4
-HAMER_COMMIT=3a01849f4148352e9260b69bf28b65d1671a4905   # pinned in V2D's Dockerfile
 MOGE_SAM3D_COMMIT=a8c37341bc0325ca99b9d57981cc3bb2bd3e255b  # pinned in V2D's sam3d Dockerfile
 export TORCH_CUDA_ARCH_LIST="8.9"   # RTX 4090 (V2D builds 8.0 8.6 8.9 9.0)
 export MAX_JOBS=${MAX_JOBS:-8}
@@ -107,7 +103,7 @@ wheels() {  # pytorch3d + nvdiffrast compiled once for torch 2.5.1/cu124/py3.11,
   ls -1 "$WHEELS"
 }
 
-hands() {  # wilor + hamer + hand_alignment + mesh Dockerfiles
+hands() {  # wilor Dockerfile
   mkenv hoi-hands
   use_cuda124
   pip install -q pyrender trimesh smplx yacs hydra-core omegaconf einops timm huggingface_hub "transformers<5" \
@@ -119,45 +115,8 @@ hands() {  # wilor + hamer + hand_alignment + mesh Dockerfiles
   # WiLoR-mini pins torch<=2.5 (pip would swap 2.5.1 for 2.5.0), so --no-deps + its other requirements at its pins
   pip install -q --no-deps -e "$EXTERNAL/WiLoR-mini"
   pip install -q roma "smplx==0.1.28" "ultralytics==8.1.34"
-  clone https://github.com/geopavlakos/hamer.git "$EXTERNAL/hamer" "$HAMER_COMMIT"
-  pip install -q --no-deps -e "$EXTERNAL/hamer"
   python -c "from wilor_mini.pipelines.wilor_hand_pose3d_estimation_pipeline import WiLorHandPose3dEstimationPipeline; \
-from hamer.models import load_hamer; from hamer.datasets.utils import generate_image_patch_cv2; \
-import manotorch, pyrender, smplx; print('hoi-hands: wilor_mini, hamer, manotorch, pyrender OK')"
-}
-
-mediapipe() {  # mediapipe Dockerfile (python:3.11-slim, no torch; mediapipe brings opencv-contrib)
-  mkenv hoi-mediapipe no
-  pip install -q "mediapipe==0.10.18" opencv-python-headless
-  python -c "import mediapipe as mp; from mediapipe.tasks.python import vision; print('hoi-mediapipe', mp.__version__, 'OK')"
-}
-
-hawor() {  # hawor Dockerfile
-  mkenv hoi-hawor
-  use_cuda124
-  pip install -q gdown joblib natsort einops timm yacs omegaconf hydra-core smplx pyrender trimesh \
-    "pytorch-lightning==2.2.4" lightning-utilities "torchmetrics==1.4.0" imageio imageio-ffmpeg av
-  clone https://github.com/ThunderVVV/HaWoR.git "$EXTERNAL/HaWoR"
-  if [ -f "$EXTERNAL/HaWoR/requirements.txt" ]; then
-    # V2D runs `pip install -r requirements.txt || true`: all-or-nothing, so its unbuildable pytorch3d@stable line
-    # leaves every package uninstalled. Here the lines that need special handling get it, the rest go one by one.
-    python -c "import pytorch3d" 2>/dev/null || pip install -q "$WHEELS"/pytorch3d-*.whl
-    python -c "import chumpy" 2>/dev/null || pip install -q --no-build-isolation git+https://github.com/mattloper/chumpy.git
-    python -c "import torch_scatter" 2>/dev/null || pip install -q torch-scatter -f https://data.pyg.org/whl/torch-2.5.1+cu124.html
-    # mmcv 1.3.9's setup.py needs pkg_resources, gone from the latest setuptools in pip's isolated build env
-    python -c "import mmcv" 2>/dev/null || pip install -q --no-build-isolation "mmcv==1.3.9"
-    local failed=()
-    while read -r req; do
-      req=${req%%#*}; req=$(echo "$req" | tr -d '\r' | xargs)
-      [ -z "$req" ] && continue
-      echo "$req" | grep -qiE '^(torch|torchvision|torchaudio|torch-scatter|mmcv)([=<> ]|$)|pytorch3d|chumpy' && continue
-      pip install -q "$req" || failed+=("$req")
-    done < "$EXTERNAL/HaWoR/requirements.txt"
-    [ ${#failed[@]} -gt 0 ] && echo "HaWoR requirements that did not install: ${failed[*]}"
-  fi
-  python -c "import droid_backends" 2>/dev/null || (cd "$EXTERNAL/HaWoR/thirdparty/DROID-SLAM" && python setup.py install)
-  pip install -q "matplotlib<3.9" "numpy<2"
-  (cd "$EXTERNAL/HaWoR" && PYTHONPATH=.:thirdparty/DROID-SLAM:thirdparty/DROID-SLAM/droid_slam python -c "import demo; print('hoi-hawor: HaWoR import OK')")
+import manotorch, pyrender, smplx; print('hoi-hands: wilor_mini, manotorch, pyrender OK')"
 }
 
 seg() {  # sam2 + grounding_dino Dockerfiles
@@ -246,21 +205,6 @@ weights_hands() {
   cp -n "$MODEL/mano/MANO_RIGHT.pkl" "$MODEL/wilor/pretrained_models/"
   cp -n "$MODEL/mano/MANO_RIGHT.pkl" "$MODEL/wilor/pretrained_models/models/"
   python -m HOI.wilor.download_weights --weights_dir "$MODEL/wilor"
-  python -m HOI.hamer.download_weights --weights_dir "$MODEL/hamer"
-  # MANO needs registration: use the files already in model/mano. HaMeR reads _DATA/data/mano/; the pipeline's
-  # manotorch renders (mano_assets_root = <hamer>/_DATA/data) read _DATA/data/models/
-  mkdir -p "$MODEL/hamer/_DATA/data/mano" "$MODEL/hamer/_DATA/data/models"
-  cp -n "$MODEL/mano/MANO_RIGHT.pkl" "$MODEL/hamer/_DATA/data/mano/"
-  cp -n "$MODEL/mano/MANO_RIGHT.pkl" "$MODEL/hamer/_DATA/data/models/"
-}
-weights_mediapipe() {
-  mkdir -p "$MODEL/mediapipe"
-  [ -f "$MODEL/mediapipe/hand_landmarker.task" ] || wget -q -O "$MODEL/mediapipe/hand_landmarker.task" \
-    https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
-}
-weights_hawor() {
-  conda activate "${WEIGHTS_ENV:-hoi-hawor}"
-  PYTHONPATH=$SRC python -m HOI.hawor.download_weights --weights_dir "$MODEL/hawor"
 }
 weights_seg() {
   conda activate "${WEIGHTS_ENV:-hoi-seg}"
@@ -307,16 +251,16 @@ weights_fp() {  # NVlabs PyTorch weights (NVIDIA source code license) and the de
 }
 
 check() {
-  for e in hoi-hands hoi-mediapipe hoi-hawor hoi-seg hoi-sam3d hoi-fp; do
+  for e in hoi-hands hoi-seg hoi-sam3d hoi-fp; do
     if conda env list | grep -q "^$e "; then echo "env $e: present"; else echo "env $e: MISSING"; fi
   done
-  du -sh "$MODEL"/{wilor,hamer,mediapipe,hawor,sam2,grounding_dino,huggingface,sam3d,foundation_pose} 2>/dev/null || true
+  du -sh "$MODEL"/{wilor,sam2,grounding_dino,huggingface,sam3d,foundation_pose} 2>/dev/null || true
 }
 
 case "$STEP" in
-  all) system; cuda124; wheels; hands; mediapipe; hawor; seg; sam3d; fp; trtexec
-       weights_hands; weights_mediapipe; weights_hawor; weights_seg; weights_sam3d; weights_fp; check ;;
-  system|cuda124|wheels|hands|mediapipe|hawor|seg|sam3d|fp|trtexec|weights_hands|weights_mediapipe|weights_hawor|weights_seg|weights_sam3d|weights_fp|check)
+  all) system; cuda124; wheels; hands; seg; sam3d; fp; trtexec
+       weights_hands; weights_seg; weights_sam3d; weights_fp; check ;;
+  system|cuda124|wheels|hands|seg|sam3d|fp|trtexec|weights_hands|weights_seg|weights_sam3d|weights_fp|check)
        "$STEP" ;;
-  *) sed -n 2,20p "$0"; exit 2 ;;
+  *) sed -n 2,16p "$0"; exit 2 ;;
 esac

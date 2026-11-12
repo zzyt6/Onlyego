@@ -1,19 +1,18 @@
-"""Run one HOI module (WiLoR, Grounding DINO, SAM2, SAM3D) in its WSL conda env.
+"""Run one HOI model wrapper (WiLoR, Grounding DINO, SAM2, SAM3D, FoundationPose) in its WSL conda env.
 
-Same envs and environment variables as `HOI run` (src/HOI/runtime.py, built by tools/wsl/setup_hoi_env.sh);
-here each module is called directly instead of through V2D's orchestrator.
+Envs built by tools/wsl/setup_hoi_env.sh; each module is called directly with `python -m`.
 """
 
 import os
 import subprocess
 from pathlib import Path
 
-from camera_pose.wsl import DISTRO, PROJECT, _quote, to_wsl
+from video_depth.wsl import DISTRO, PROJECT, _quote, to_wsl
 
 MODEL = to_wsl(PROJECT / "model")
 _EGL = {"PYOPENGL_PLATFORM": "egl"}
 
-# module group -> (conda env, extra environment variables); mirrors HOI.runtime.ENV_FOR_IMAGE / ENV_VARS
+# module group -> (conda env, extra environment variables)
 ENVS = {
     "wilor": ("hoi-hands", _EGL),
     "grounding_dino": ("hoi-seg", {"HF_HOME": f"{MODEL}/huggingface", "HF_HUB_OFFLINE": "1",

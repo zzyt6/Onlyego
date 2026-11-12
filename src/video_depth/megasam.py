@@ -38,7 +38,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from camera_pose.poses import save_pose
+from video_depth.poses import save_pose
 from depth_estimation.datatypes import CameraIntrinsics, frame_indices, frame_name, load_depth, save_depth
 
 

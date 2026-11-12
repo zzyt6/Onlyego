@@ -50,7 +50,7 @@ def load_mesh(path) -> trimesh.Trimesh:
 def transform_matrix(t: dict) -> np.ndarray:
     """SAM3D transform.json (already converted to OpenCV by image_to_mesh) -> 4x4 with scale:
     x_cam = R @ (s * x) + t."""
-    from camera_pose.poses import quat_wxyz_to_matrix
+    from video_depth.poses import quat_wxyz_to_matrix
     M = np.eye(4)
     M[:3, :3] = quat_wxyz_to_matrix(t["rotation"]) @ np.diag(t["scale"])
     M[:3, 3] = t["translation"]

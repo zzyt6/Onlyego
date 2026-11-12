@@ -1,4 +1,4 @@
-"""Run a Python module of this repo inside the WSL CUDA env (the role V2D's run_in_container plays).
+"""Run a Python module of this repo inside a WSL conda env (MegaSaM here; object_model.wsl for the model wrappers).
 
 The repo is reached through /mnt/<drive>/..., so the Linux side imports the same source files.
 """
@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path, PureWindowsPath
 
 DISTRO = os.environ.get("ZYEGO_WSL_DISTRO", "V2D-Ubuntu")
-ENV_NAME = os.environ.get("ZYEGO_WSL_ENV", "zyego-cuda")
+ENV_NAME = os.environ.get("ZYEGO_WSL_ENV", "zyego-megasam")
 EXTERNAL = "$HOME/zyego-external"
 PROJECT = Path(__file__).resolve().parents[2]
 
@@ -26,10 +26,7 @@ def _quote(s: str) -> str:
     return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
-DROID_PATH = (f"{EXTERNAL}/DROID-SLAM/droid_slam",)
-
-
-def command(module: str, args: list[str], env: str = ENV_NAME, pythonpath: tuple[str, ...] = DROID_PATH) -> list[str]:
+def command(module: str, args: list[str], env: str = ENV_NAME, pythonpath: tuple[str, ...] = ()) -> list[str]:
     """pythonpath: extra Linux paths after the repo's src/ (may use $HOME, so they are double-quoted)."""
     extra = "".join(f':"{p}"' for p in pythonpath)
     script = (f'source "$HOME/miniforge3/etc/profile.d/conda.sh" && conda activate {env} && '
@@ -39,7 +36,7 @@ def command(module: str, args: list[str], env: str = ENV_NAME, pythonpath: tuple
 
 
 def run_module(module: str, args: list[str], log=print, env: str = ENV_NAME,
-               pythonpath: tuple[str, ...] = DROID_PATH) -> int:
+               pythonpath: tuple[str, ...] = ()) -> int:
     """Stream the Linux process output; returns its exit code."""
     env_vars = dict(os.environ, MSYS_NO_PATHCONV="1")
     with subprocess.Popen(command(module, args, env, pythonpath), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

@@ -48,7 +48,7 @@ def write_fullres(depth_run: Path, out: Path, log=print) -> int:
 
 def finish(depth_run: Path, out: Path) -> dict:
     """Windows side after WSL: full-resolution depth, run.json for the viewer, trajectory summary."""
-    from camera_pose.poses import load_trajectory, trajectory_summary, write_tum
+    from video_depth.poses import load_trajectory, trajectory_summary, write_tum
     write_fullres(depth_run, out)
     record = json.loads((depth_run / "run.json").read_text(encoding="utf-8"))
     images = (depth_run / record.get("image_dir", "frames")).resolve()
@@ -82,36 +82,15 @@ def main(argv=None):
     full = sub.add_parser("fullres", help="Recompute the full-resolution depth/ of an existing run")
     full.add_argument("run", help="video_depth run folder, or its name under runs/video_depth")
     sub.add_parser("check", help="Check the WSL MegaSaM env")
-    cmp_ = sub.add_parser("compare", help="Side-by-side video + background stability: MoGe-2 per frame (as V2D) "
-                                          "vs MoGe-2 + MegaSaM (see compare.py)")
-    cmp_.add_argument("run", help="video_depth run folder, or its name under runs/video_depth")
     args = parser.parse_args(argv)
 
-    from camera_pose import wsl
+    from video_depth import wsl
     try:
         if args.command == "check":
             import subprocess, os
             script = PROJECT / "tools" / "wsl" / "setup_cuda_env.sh"
             sys.exit(subprocess.call(["wsl.exe", "-d", wsl.DISTRO, "--", "bash", wsl.to_wsl(script), "megasam_check"],
                                      env=dict(os.environ, MSYS_NO_PATHCONV="1")))
-        if args.command == "compare":
-            from .compare import compare
-            out = Path(args.run) if Path(args.run).is_dir() else RUNS / args.run
-            record = json.loads((out / "run.json").read_text(encoding="utf-8"))
-            depth_run = Path(record["depth_run"])
-            from depth_estimation.viewer import ENGLISH_LABELS, find_sources
-            # every full-resolution depth of this video (MegaSaM's native low-res output has another size)
-            sources = {ENGLISH_LABELS[key]: folder for key, (_, folder) in find_sources(out).items()
-                       if key != ("video_depth", "depth_megasam")}
-            fps = record.get("video", {}).get("fps") or 30.0
-            summary = compare(sources, Path(record["image_dir"]), out, fps=fps)
-            print(f"{'':28s}{'scale jitter':>14s}{'pixel wobble':>14s}{'wobble mm':>11s}{'frame jump':>12s}{'coverage':>10s}")
-            for name, r in summary["stability"].items():
-                print(f"{name:28s}{r['scale_jitter_pct']:>13.2f}%{r['pixel_wobble_pct']:>13.2f}%"
-                      f"{r['pixel_wobble_mm']:>11.2f}{r['frame_to_frame_pct']:>11.3f}%{r['coverage'] * 100:>9.0f}%")
-            for name in ("compare.mp4", "compare_background.png", "compare.json"):
-                print(f"-> {out / name}")
-            return
         if args.command == "fullres":
             out = Path(args.run) if Path(args.run).is_dir() else RUNS / args.run
             depth_run = Path(json.loads((out / "run.json").read_text(encoding="utf-8"))["depth_run"])
